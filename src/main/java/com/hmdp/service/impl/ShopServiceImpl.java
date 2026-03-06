@@ -1,10 +1,19 @@
 package com.hmdp.service.impl;
 
+import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSON;
+import cn.hutool.json.JSONUtil;
+import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
 import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.utils.RedisConstants;
+import io.netty.util.internal.StringUtil;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * <p>
@@ -16,5 +25,30 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IShopService {
+    private final StringRedisTemplate redisTemplate;
 
+    public ShopServiceImpl(StringRedisTemplate redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
+
+    @Override
+    public Result queryById(Long id) {
+        // 1、从redis中查询商铺缓存
+        String shopJson = redisTemplate.opsForValue().get(RedisConstants.CACHE_SHOP_KEY + id);
+        // 2、判断是否存在,存在直接返回
+        if (StrUtil.isNotBlank(shopJson)) {
+            // 存在，直接返回
+            Shop shop = JSONUtil.toBean(shopJson, Shop.class);
+            return Result.ok(shop);
+        }
+        // 3、不存在，根据id查询数据库
+        Shop shop = getById(id);
+        // 4、存在，写入redis,设置过期时间，不存在，返回错误信息
+        if (shop != null) {
+            redisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY + id, JSONUtil.toJsonStr(shop), RedisConstants.CACHE_SHOP_TTL, TimeUnit.MINUTES);
+            return Result.ok(shop);
+        }
+        // 5、不存在，返回错误信息
+        return Result.fail("店铺信息不存在！");
+    }
 }
