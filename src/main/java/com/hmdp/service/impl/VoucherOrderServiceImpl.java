@@ -9,6 +9,7 @@ import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
+import org.springframework.aop.framework.AopContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,7 +37,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
      * @return
      */
     @Override
-    @Transactional
     public Result seckillVoucher(Long voucherId) {
         // 从数据库中查询优惠券信息
         SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
@@ -51,6 +51,22 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         if (voucher.getStock() < 1) {
             return Result.fail("优惠券已抢购完!");
         }
+
+        Long userId = UserHolder.getUser().getId();
+        synchronized(userId.toString().intern()){
+            // 获取代理对象（事务）
+            IVoucherOrderService currentProxy = (IVoucherOrderService) AopContext.currentProxy();
+            return currentProxy.createVoucherOrder(voucherId);
+        }
+    }
+
+    /**
+     * 创建订单(加锁)
+     * @param voucherId
+     * @return
+     */
+    @Transactional
+    public synchronized Result createVoucherOrder(Long voucherId) {
         //3、下单（扣库存、创建订单）
         Long userId = UserHolder.getUser().getId();
         int count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
@@ -58,7 +74,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("用户已抢购过该优惠券");
         }
         //4、扣减库存
-        boolean success = seckillVoucherService.update().setSql("stock = stock - 1").eq("voucher_id", voucherId).update();
+        boolean success = seckillVoucherService.update().setSql("stock = stock - 1") // setSql()
+                .eq("voucher_id", voucherId) // where条件
+                .gt("stock", 0).update();
         if (!success) {
             return Result.fail("库存不足");
         }
@@ -70,7 +88,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         order.setVoucherId(voucherId);
         order.setCreateTime(LocalDateTime.now());
         save(order);
-
-        return Result.ok(order_id);
+        return Result.ok(order.getId());
     }
 }
