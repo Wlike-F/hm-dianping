@@ -80,7 +80,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         }
 
         // 都没有，返回错误信息
-        return Result.fail("店铺不存在");
+        return Result.ok();
 
     }
 
