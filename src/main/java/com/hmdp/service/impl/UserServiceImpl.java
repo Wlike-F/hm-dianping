@@ -11,14 +11,18 @@ import com.hmdp.entity.User;
 import com.hmdp.mapper.UserMapper;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RegexUtils;
+import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -128,5 +132,67 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         return null;
     }
 
+    /**
+     * 签到功能
+     * @return
+     */
+    @Override
+    public Result sign() {
+        // 获取当前登录用户
+        Long userId = UserHolder.getUser().getId();
+        // 获取当前日期
+        LocalDateTime now = LocalDateTime.now();
+        // 拼接key
+        String key = USER_SIGN_KEY + userId + ":" + now.getYear() + now.getMonthValue();
+        // 计算今天是这个月的第几天
+        int dayOfMonth = now.getDayOfMonth();
 
+        // 判断这个日期是否已经签到
+        Boolean isSign = stringRedisTemplate.opsForValue().getBit(key, dayOfMonth -1 );
+        if (Boolean.TRUE.equals(isSign)) {
+            return Result.fail("今天已经签到");
+        }
+        // 签到
+        stringRedisTemplate.opsForValue().setBit(key, dayOfMonth - 1 , true);
+        return Result.ok(UserHolder.getUser().getNickName()+ "签到成功");
+    }
+
+    /**
+     * 统计签到天数
+     * @return
+     */
+    @Override
+    public Result signCount() {
+        // 获取当前登录用户与当前日期
+        Long userId = UserHolder.getUser().getId();
+        LocalDateTime now = LocalDateTime.now();
+
+        // 拼接key
+        String key = USER_SIGN_KEY + userId + ":" + now.getYear() + now.getMonthValue();
+        int dayOfMonth = now.getDayOfMonth();
+
+        // 获取这个月的签到记录，返回一个十进制数字
+        List<Long> result = stringRedisTemplate.opsForValue()
+                .bitField(key, BitFieldSubCommands.create()
+                        .get(BitFieldSubCommands.BitFieldType.unsigned(dayOfMonth)).valueAt(0));
+        if (result == null || result.isEmpty()) {
+            return Result.ok(0);
+        }
+        // 循环遍历，获取最后1位
+        long signCount = result.get(0);
+        if (signCount == 0 || signCount == -1) {
+            return Result.ok(0);
+        }
+        int count = 0;
+        while (true){
+            // 让这个数字与1进行位运算，得到最右边的1
+            if ((signCount & 1) == 1) {
+                signCount = signCount >> 1; // 循环位移，去掉最后一个1
+                count++;
+            }else {
+                break;
+            }
+        }
+        return Result.ok(count);
+    }
 }
