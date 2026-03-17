@@ -95,4 +95,23 @@ public class HmDianPingApplicationTests {
         }
     }
 
+    /**
+     * 测试HyperLogLog
+     */
+    @Test
+    public void testHyperLoglog() {
+        String[] values = new String[1000];
+        int j = 0;
+        for (int i = 0; i < 1000000; i++) {
+            values[j++] = "user_" + i;
+            if (j == 1000) {
+                stringRedisTemplate.opsForHyperLogLog().add("hll1", values);
+                j = 0;
+            }
+        }
+        // 统计数量
+        Long size = stringRedisTemplate.opsForHyperLogLog().size("hll1");
+        System.out.println("数量为：" + size);
+    }
+
 }
