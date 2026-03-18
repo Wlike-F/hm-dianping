@@ -18,6 +18,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
 
 import java.time.LocalDateTime;
@@ -127,9 +128,21 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         return Result.ok(token);
     }
 
+    /**
+     * 登出功能
+     * @param request
+     * @return
+     */
     @Override
-    public Result logout() {
-        return null;
+    public Result logout(HttpServletRequest request) {
+        // 获取token
+        String token = request.getHeader("authorization");
+        if (token == null || token.isEmpty()) {
+            return Result.ok();
+        }
+        // 删除redis中的用户信息
+        stringRedisTemplate.delete(LOGIN_USER_KEY + token);
+        return Result.ok();
     }
 
     /**
