@@ -80,21 +80,23 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 //            return Result.ok(shop_1);
 //        }
 //
-//        // 逻辑过期
-//        Shop withLogicalExpire = queryWithLogicalExpire(id);
-//        if (withLogicalExpire != null){
-//            return Result.ok(withLogicalExpire);
-//        }
-        //使用工具类进行逻辑过期查询
-        Shop shop_2 = cacheClient.
-                queryWithLogicalExpire(RedisConstants.CACHE_SHOP_KEY,
-                        id, Shop.class, this::getById, RedisConstants.CACHE_SHOP_TTL, TimeUnit.SECONDS);
-        if (shop_2 != null){
-            return Result.ok(shop_2);
+        // 逻辑过期
+        Shop withLogicalExpire = queryWithLogicalExpire(id);
+        if (withLogicalExpire != null){
+            return Result.ok(withLogicalExpire);
         }
+        return Result.fail("店铺不存在！");
 
-        // 都没有，返回错误信息
-        return Result.ok();
+        //使用工具类进行逻辑过期查询
+//        Shop shop_2 = cacheClient.
+//                queryWithLogicalExpire(RedisConstants.CACHE_SHOP_KEY,
+//                        id, Shop.class, this::getById, RedisConstants.CACHE_SHOP_TTL, TimeUnit.SECONDS);
+//        if (shop_2 != null){
+//            return Result.ok(shop_2);
+//        }
+//
+//        // 都没有，返回错误信息
+//        return Result.ok(shop_2);
 
     }
 
@@ -258,11 +260,23 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
      * @return
      */
     public Shop queryWithLogicalExpire(Long id) {
+        String key = RedisConstants.CACHE_SHOP_KEY + id;
         // 1、从redis中查询商铺缓存
-        String shopJson = redisTemplate.opsForValue().get(RedisConstants.CACHE_SHOP_KEY + id);
-        // 2、判断缓存命中，未命中，返回空
-        if (shopJson == null || shopJson.isEmpty()){
-            return null;
+        String shopJson = redisTemplate.opsForValue().get(key);
+        // 2、判断缓存命中，未命中
+        if (StrUtil.isBlank(shopJson)){
+            // 3.未命中，查询数据库
+            Shop shop = getById(id);
+            if (shop == null){
+                return null;
+            }
+            // 4.写入Redis, 20秒过期
+            try {
+                this.saveShopToRedis(id, 20L);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            return shop;
         }
         // 3、命中了，判断是否缓存过期
         RedisData redisData = JSONUtil.toBean(shopJson, RedisData.class);  // 获取缓存数据
